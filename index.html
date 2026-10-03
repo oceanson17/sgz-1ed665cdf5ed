@@ -764,7 +764,7 @@ function applyFx(fx,src){
  if(st){for(var k in st){if(S.p.st[k]===undefined)continue;var d=+st[k];if(isNaN(d))continue;
    if(ai){var lim=(k==='gold')?AI_CLAMP.gold:(k==='hp'?AI_CLAMP.hp:AI_CLAMP.st);d=clamp(d,-lim,lim);}
    if(d<0&&k==='hp'){d=Math.round(d*({easy:0.6,normal:0.85,hard:1.1,hell:1.4}[SET.diff]||1)*(window.dmgMul?dmgMul():1));if(d===0)d=-1;}
-   var cap=(k==='gold')?999999:100;
+   var cap=(k==='gold')?999999:(k==='merit'?999:100);
    if(k==='wu'||k==='zhi'||k==='zheng'||k==='mei'||k==='tong'||k==='stealth'){cap=(k==='wu'&&S.flags.kh_done)?100:95;}
    var old=S.p.st[k];S.p.st[k]=clamp(Math.round(old+d),0,cap);var ch=S.p.st[k]-old;
    if(ch!==0&&k!=='merit')out.push(ST_NAMES[k]+(ch>0?'+':'')+ch);else if(ch!==0)out.push('功勳'+(ch>0?'+':'')+ch);}}
@@ -852,7 +852,7 @@ function monthTick(){
 }
 function computeInf(){
  var p=S.p;var f=0;for(var id in S.rel){var r=S.rel[id];if(r.ly>=60)f++;}
- var v=p.rank*9+Math.min(f,6)*4+p.st.rep*0.25+(S.flags.holdseal?10:0)+Math.min(30,(S.stat.kills||0)*2)+(p.st.merit/8);
+ var v=p.rank*9+Math.min(f,6)*4+p.st.rep*0.25+(S.flags.holdseal?10:0)+Math.min(30,(S.stat.kills||0)*2)+(Math.min(100,p.st.merit)/8);
  p.st.inf=clamp(Math.round(v),0,100);
 }
 
@@ -1047,7 +1047,7 @@ NODES.hub=function(a){
  c.push(ch('✉ 密信','pickNpc',{pu:'letter',pg:0},null,{g:'社交'}));
  c.push(ch('🎭 計謀','schemeMenu',null,null,{g:'謀略'}));
  c.push(ch('🗡 刺殺·武鬥','assMenu',null,null,{g:'謀略'}));
- c.push(ch('📈 仕途·晉升','careerMenu',null,null,{g:'仕途'}));
+ c.push(ch('📈 仕途·晉升'+(window.Career?Career.hubTag():''),'careerMenu',null,null,{g:'仕途'}));
  c.push(ch('🛒 採購·打聽','shop',null,null,{g:'仕途'}));
  var sp=specialHub();for(i=0;i<sp.length;i++)c.push(sp[i]);
  // 此地人物
@@ -4654,7 +4654,7 @@ function panelStats(){
  var p=S.p,st=p.st,pa=PATHS[p.path];
  var h='<div class="sec"><div class="row"><canvas data-npc="@me" width="40" height="40" style="width:64px;height:64px;border:2px solid #d9a93a"></canvas><div><div style="font-size:18px;font-weight:bold">'+esc(p.name)+' <span class="hint">'+pSexLabel()+'·'+p.age+'歲</span></div>'
   +'<div style="color:#d9a93a">'+esc(p.title)+'</div><div class="hint">'+esc(regionName(p.region))+'·'+THEMES[p.spot]+'</div></div></div>';
- var nd=p.rank>=4?0:PATHS[p.path].need[p.rank+1];
+ var nd=p.rank>=4?0:rankNeed();
  h+=stRow('晉升進度',st.merit,Math.max(1,nd||st.merit||1),'#d9a93a',st.merit+'/'+(nd||'滿級'))+'</div>';
  h+='<div class="sec"><h4>能力</h4>'
   +stRow('武力',st.wu,100,'#d8473a')+stRow('智力',st.zhi,100,'#3fa6a0')+stRow('政治',st.zheng,100,'#6a90c0')+stRow('魅力',st.mei,100,'#e08aa0')+stRow('統率',st.tong,100,'#d9a93a')+stRow('隱秘',st.stealth,100,'#9a7ac0')+'</div>';
@@ -9744,7 +9744,7 @@ var HUD={sel:0,near:null};
   $('hudn').textContent=p.name+' · '+p.title;
   var hp=clamp(Math.round(st.hp),0,100);$('hudhp').style.width=hp+'%';$('hudhpt').textContent='氣血 '+hp+'/100';
   var rep=clamp(Math.round(st.rep),0,100);$('hudmp').style.width=rep+'%';$('hudmpt').textContent='聲望 '+rep;
-  $('hudlv').textContent=FACTIONS[p.fac]?FACTIONS[p.fac].n+' · 功勳'+st.merit:'無所屬 · 功勳'+st.merit;
+  var mtx=window.Career?Career.hudMerit():st.merit;$('hudlv').textContent=FACTIONS[p.fac]?FACTIONS[p.fac].n+' · 功勳'+mtx:'無所屬 · 功勳'+mtx;
   var o=ymd(S.day);
   $('hudd').innerHTML=SEAS_N[seasonOf()]+'·'+o.m+'月'+NUMC[o.d||1]+'　'+hrOf()+' '+(todNow()==='night'?'☾':'☀');
   $('hudg').textContent=st.gold;
@@ -11523,6 +11523,7 @@ var Canon={};
   else ps.push('無所屬');
   L.push('◆玩家：'+ps.join('；'));
   var nt=CN().notes;if(nt.length)L.push('◆玩家受罰／際遇：'+nt.join('；'));
+  if(window.Career&&Career.canonLine){var cln=Career.canonLine();if(cln)L.push(cln);}
   /* 天下與官職 */
   var off=[];
   if(S.emp&&alive(S.emp))off.push('天子'+nm(S.emp));
@@ -11682,6 +11683,479 @@ var Canon={};
   try{if(sc&&sc.t)Canon.record(sc);}catch(e2){}
   return r;
  };
+})();
+
+/* ---- 42_career.js ---- */
+/* ===== 42_career.js — 仕途系統 v2：明確條件、多途徑、職司、舉薦、競爭、考績與降職 ===== */
+var Career=(function(){
+ var C={};
+ var DN={easy:0.85,normal:1,hard:1.1,hell:1.25};
+ var REPT=[0,0,6,12,22],STT=[0,20,32,44,56],TRT=[0,12,24,36,48],TEN=[0,15,40,70,110],PFT=[0,14,24,34,46];
+ var STN={wu:'武力',zhi:'智力',zheng:'政治',mei:'魅力',tong:'統率'};
+ var ROUTE_N={std:'循例升遷',letter:'舉薦破格',war:'大功特擢',bribe:'捐納賄賂'};
+ /* 職掌：[前期(~195)，後期(196~)] */
+ var DUTY={
+  guard:[['值守宮門','值守宮禁'],['宿衛殿階','宿衛行在'],['領羽林一隊','領虎賁一隊'],['典宿衛兵馬','典宿衛營壘'],['掌南北禁軍','掌京畿禁旅']],
+  eunuch:[['傳遞省中文書','傳遞禁中文書'],['侍奉御前起居','侍奉天子起居'],['掌省中諸宦者','掌禁中諸宦者'],['出入禁中，宣達詔命','出入行在，宣達詔命'],['總領後宮內侍','總領宮闈內侍']],
+  maid:[['灑掃殿閣','灑掃宮室'],['奉茶侍墨','奉茶侍墨'],['管轄一殿宮人','管轄一宮宮人'],['掌六尚之一','掌六尚之一'],['總理內宮諸務','總理內宮諸務']],
+  consort:[['居偏殿，歲有供奉','居偏殿，歲有供奉'],['獨居一宮','獨居一宮'],['位視上卿','位視上卿'],['位比丞相','位比丞相'],['母儀天下','母儀天下']],
+  soldier:[['編入營伍，隨隊操練','編入行伍，隨隊操練'],['領四卒','領四卒'],['領百人','領百人'],['領一部千人','領一部千人'],['領一軍，開府治事','領一軍，開府治事']],
+  adviser:[['候教於幕府','候教於幕府'],['掌文書奏記','掌文書奏記'],['分曹辦事，參與機要','分曹辦事，參與機要'],['參謀軍務','參謀軍務'],['總攬謀議，位在諸將之上','總攬謀議，位在諸將之上']],
+  physician:[['研藥侍診','研藥侍診'],['坐堂施診','坐堂施診'],['侍奉主君用藥','侍奉主君用藥'],['掌一方醫署','掌一方醫署'],['天下共仰，不可或缺','天下共仰，不可或缺']],
+  attendant:[['近身伺候','近身伺候'],['掌妝奩衣物','掌妝奩衣物'],['歌舞宴樂','歌舞宴樂'],['傳遞內外消息','傳遞內外消息'],['總理內宅','總理內宅']],
+  wander:[['浪跡市井','浪跡市井'],['結交各路好漢','結交各路好漢'],['一言九鼎','一言九鼎'],['聚眾數百，一方稱雄','聚眾數百，一方稱雄'],['開宗立派，名震江湖','開宗立派，名震江湖']]
+ };
+ var GRP={guard:'mil',soldier:'mil',eunuch:'pal',maid:'pal',consort:'pal',attendant:'pal',adviser:'civ',physician:'civ',wander:'jh'};
+ var ACT={
+  mil:['你點閱兵馬，整肅營紀，將怠惰者一一記過。','你親自巡營，夜裡查哨，沒有一個人敢打盹。','你操演隊伍，鼓聲整齊，上官在遠處看了許久。'],
+  pal:['你把分內之事做得滴水不漏，沒有一個人挑得出錯。','你留心宮中動靜，記下了幾樁不便明說的事。','你周旋於貴人之間，言語謹慎，進退有度。'],
+  civ:['你理清了積壓的文牘，條陳分明，上官頻頻點頭。','你在議事時提出一條務實的辦法，被當場記下。','你查核賬目，挑出幾處紕漏，免去一場大禍。'],
+  jh:['你替人排難解紛，幾句話就平息了一場械鬥。','你接下一樁不起眼的差事，辦得乾淨俐落，名聲又傳遠了一分。','你設宴結交四方好漢，酒酣耳熱之間，記下不少門路。']
+ };
+ var CER={
+  mil:['校場鼓聲震天，你單膝跪地，接過新授的印信。','營中諸將列隊，你在眾目之下披上新甲。'],
+  pal:['宮中鐘磬輕鳴，你叩首謝恩，領受新的牙牌與衣冠。','殿上宣詔，你俯身叩首，袖中的手微微發抖。'],
+  civ:['堂上宣讀任命，同僚拱手稱賀，你還禮不迭。','你捧著新授的印綬，在眾人的目光中站直了身子。'],
+  jh:['江湖同道設宴相賀，你當眾飲下那碗酒，名號又響了一分。','眾人推你上座，一面無字的旗在你身後豎起。']
+ };
+ function dn(){return DN[SET.diff]||1;}
+ function era(){return ymd(S.day).y>=196?1:0;}
+ function grp(){return GRP[S.p.path]||'jh';}
+ /* ---- 狀態（惰性建立，舊存檔相容） ---- */
+ var DEF=function(){return {v:1,lr:S.p.rank,lp:S.day-90,pf:50,wn:0,rev:S.day,big:0,nL:0,nB:0,lt:[],riv:null,hist:[],pity:0,cd:{},cc:0,rdy:0,gain:0,wk:S.day,dc:0};};
+ function car(){
+  if(!S.car||typeof S.car!=='object')S.car=DEF();
+  var d=DEF(),c=S.car;for(var k in d){if(c[k]===undefined)c[k]=d[k];}
+  if(c.lr!==S.p.rank)sync();
+  return S.car;
+ }
+ function sync(){
+  var c=S.car;if(!c)return;
+  if(c.lr!==S.p.rank){
+   if(S.p.rank>c.lr){c.hist.push({d:S.day,r:S.p.rank,t:S.p.title,v:c.via||'任命'});if(c.hist.length>12)c.hist.shift();}
+   c.lr=S.p.rank;c.lp=S.day;c.riv=null;c.pity=0;c.rdy=0;c.via='';
+  }
+ }
+ C.sync=function(){if(S&&S.p&&S.car)sync();};
+ /* ---- 職司 ---- */
+ C.post=function(rank){
+  var r=rank==null?S.p.rank:rank;r=clamp(r,0,4);var pa=PATHS[S.p.path];var d=(DUTY[S.p.path]||DUTY.wander)[r];
+  var sal=[1,3,6,10,15][r]*(S.p.path==='consort'||S.p.path==='eunuch'?1.3:1);
+  var tp=(grp()==='mil'?[0,0,2,3,5]:[0,0,0,1,2])[r];
+  return {rank:pa.ranks[r],duty:d[era()],sal:Math.round(sal),troop:tp,n:pa.ranks[r]+'（'+d[era()]+'）'};
+ };
+ C.meritNeed=function(r){var pa=PATHS[S.p.path];r=clamp(r,0,4);return Math.round(pa.need[r]*dn());};
+ /* ---- 舉薦信 ---- */
+ C.letters=function(){
+  var c=car(),out=[];
+  for(var i=0;i<c.lt.length;i++){var l=c.lt[i];if(l.exp>S.day&&alive(l.id))out.push(l);}
+  if(S.p.fac!=='none'&&S.flags['rec_'+S.p.fac])out.push({id:'',legacy:1,exp:S.day+999,q:1});
+  return out;
+ };
+ function letterFactor(l){return (l&&l.q>1)?0.65:0.75;}
+ C.bossName=function(){var b=bossOf();return b?nm(b):'';};
+ /* ---- 後援（上司信任／聖寵／江湖名望） ---- */
+ function loverBonus(){
+  var s=0;try{var lc=(S.love&&S.love.c)||{};for(var id in lc){var r=lc[id];if(r&&r.st>=3&&NPC[id]&&alive(id)&&NPC[id].tier>=3&&facOf(id)===S.p.fac&&S.p.fac!=='none')s=8;}}catch(e){}
+  return s;
+ }
+ C.patron=function(r){
+  var p=S.p;
+  if(p.path==='wander'||p.fac==='none')return {t:'江湖名望',have:Math.round(p.st.rep),need:REPT[r]+4,tip:'行俠仗義、參加宴席、立下大功可提高聲望。',nobody:1};
+  if(p.path==='consort'){var em=(S.emp&&alive(S.emp))?S.emp:'';var b0=bossOf();var sc=0,pid='';
+   if(em){var q=R(em);sc=Math.round(q.af*0.7+q.lo*0.5+q.tr*0.3);pid=em;}
+   if(b0){var q0=R(b0);var s0=Math.round(q0.tr+q0.ly*0.5);if(s0>sc){sc=s0;pid=b0;}}
+   if(pid)return {t:'聖寵／內廷賞識（'+nm(pid)+'）',have:sc,need:PFT[r],tip:'「爭取聖寵」、進言得寵、贈禮與陪伴，或履行職司取悅後宮之主。',id:pid};}
+  var b=bossOf();
+  if(!b)return {t:'上司信任',have:99,need:0,tip:'主公缺位，暫免此條。',nobody:1};
+  var q2=R(b);var lb=loverBonus();
+  return {t:'上司賞識（'+nm(b)+'）',have:Math.round(q2.tr+q2.ly*0.5+lb),need:TRT[r],tip:'多當差、拜訪並送禮給上司，或請託他人舉薦；'+(lb?'（含內助+'+lb+'）':''),id:b};
+ };
+ /* ---- 條件檢查 ---- */
+ C.reqs=function(route){
+  var p=S.p,c=car(),r=p.rank+1;if(r>4)return null;
+  var l=C.letters()[0];var mf=1;
+  if(route==='letter')mf=letterFactor(l);else if(route==='war')mf=0.8;else if(route==='bribe')mf=0.6;
+  var it=[];var mn=Math.max(1,Math.round(C.meritNeed(r)*mf));
+  it.push({k:'merit',t:'功勳',have:p.st.merit,need:mn,tip:'當差、出謀劃策、領兵出征、完成事件與任務都能累積功勳；每月另有年資功勳。'});
+  var sk=PATHS[p.path].stat;
+  if(route==='std'||route==='letter'||route==='war')it.push({k:'stat',t:STN[sk]||sk,have:Math.round(pStat(sk)),need:STT[r],tip:'到「修練·營生」訓練，或讀書、習武。'});
+  if(route==='std'&&REPT[r]>0){it.push({k:'rep',t:'聲望',have:Math.round(p.st.rep),need:REPT[r],tip:'行善、赴宴、立大功、整肅風評都可提高聲望。'});}
+  if(route==='std'||route==='bribe'){var tn=Math.round(TEN[r]*(route==='bribe'?0.5:1));var hv=S.day-c.lp;it.push({k:'ten',t:'資歷（在職日數）',have:hv,need:tn,tip:'任職日數需要時間累積，期間可專心辦差。'});}
+  if(route==='std'){var pt=C.patron(r);it.push({k:'pat',t:pt.t,have:pt.have,need:pt.need,tip:pt.tip,id:pt.id||'',nobody:pt.nobody||0});}
+  if(route==='letter'){it.push({k:'let',t:'舉薦信',have:C.letters().length,need:1,tip:'向熟識的上司或同僚「請託舉薦」；信函有效約 10 個月，舉薦人亡故則作廢。'});}
+  if(route==='war'){it.push({k:'big',t:'大功（單次功勳≥10）',have:c.big,need:r,tip:'參與大戰、立下奇功，或在出征、事件中取得大功。'});}
+  if(route==='bribe'){var cost=C.bribeCost();it.push({k:'gold',t:'打點金',have:p.st.gold,need:cost,tip:'賺取金錢。'});}
+  it.push({k:'clean',t:'通緝度',have:Math.round(p.wanted||0),need:route==='bribe'?45:30,max:1,tip:'通緝度需降低：躲避風頭、庇護、時間流逝。'});
+  it.push({k:'dil',t:'怠職警告',have:c.wn,need:3,max:1,lt:1,tip:'按時當差、履行職司，年度考績優等可消警告。'});
+  var ok=true;
+  for(var i=0;i<it.length;i++){var x=it[i];x.ok=x.max?(x.lt?x.have<x.need:x.have<=x.need):(x.have>=x.need);if(!x.ok)ok=false;}
+  return {items:it,ok:ok,route:route,r:r,mf:mf};
+ };
+ C.bribeCost=function(){var r=S.p.rank+1;return Math.round(90*r*(0.9+0.1*dn()*dn()));};
+ /* ---- 競爭者 ---- */
+ function rivalPool(){
+  var f=S.p.fac,a=[],b=bossOf();
+  if(S.p.path==='consort'){['hehou','donghou'].forEach(function(i){if(alive(i)&&i!==S.emp)a.push(i);});}
+  for(var i=0;i<NPCS.length;i++){var n=NPCS[i];if(n.child||!alive(n.id)||n.id===b||n.age<16)continue;
+   if(f==='none'||S.p.path==='wander'){if(n.f==='none'&&n.tier<=3&&n.id!=='xiandi')a.push(n.id);}
+   else if(facOf(n.id)===f&&n.tier<=3&&(!S.fac[f]||S.fac[f].ruler!==n.id)&&n.id!==S.emp){if(S.p.path==='consort'&&n.sex!=='f')continue;a.push(n.id);}}
+  return a;
+ }
+ C.rival=function(){
+  var c=car(),r=S.p.rank+1;if(r>4)return null;
+  var v=c.riv;
+  if(v&&v.r===r&&(!v.id||(alive(v.id)&&(S.p.fac==='none'||facOf(v.id)===S.p.fac||v.id==='hehou'||v.id==='donghou'))))return v;
+  var pool=rivalPool(),id=pool.length?pool[rnd(pool.length)]:'';
+  var base=24+r*6+(id?NPC[id].tier*2:3)+rnd(8)+({easy:-8,normal:0,hard:5,hell:11}[SET.diff]||0);
+  var anon=['同僚趙某','同僚錢某','同袍孫某','同輩李某','同門周某'];
+  c.riv={id:id,n:id?NPC[id].n:pick(anon),r:r,pw:base};
+  return c.riv;
+ };
+ C.edge=function(rq){
+  var c=car(),p=S.p,r=p.rank+1,v=C.rival();if(!v||!rq)return 0;
+  var y=36;var it=rq.items;
+  for(var i=0;i<it.length;i++){var x=it[i];
+   if(x.k==='merit')y+=clamp((x.have-x.need)/Math.max(8,x.need)*25,0,18);
+   if(x.k==='pat')y+=clamp((x.have-x.need)*0.6,-6,14);
+   if(x.k==='rep')y+=clamp((x.have-x.need)*0.3,0,8);}
+  if(rq.route==='letter')y+=14;if(rq.route==='war')y+=10;
+  y+=c.pity;return y;
+ };
+ C.win=function(rq){
+  var v=C.rival();if(!v)return 97;
+  if(rq.route==='bribe')return 100;
+  return clamp(Math.round(66+(C.edge(rq)-v.pw)*1.1),22,97);
+ };
+ function rivalWord(v,rq){var d=C.edge(rq)-v.pw;return d>12?'你明顯占優':d>-4?'勢均力敵':d>-16?'對手略強':'對手強勁';}
+ function bar(a,b,w){w=w||10;var n=b>0?Math.round(clamp(a/b,0,1)*w):w;var s='';for(var i=0;i<w;i++)s+=(i<n?'■':'□');return s;}
+ /* ---- 榮銜（由累計次數推導，不佔存檔） ---- */
+ C.honors=function(){
+  var c=car(),h=[],p=S.p;
+  if(c.nL>=2)h.push('孝廉之選');
+  if(c.big>=8)h.push('百戰之士');else if(c.big>=3)h.push('破賊功臣');
+  if(c.nB>=1)h.push('納資得官');
+  else if(p.rank>=3&&p.st.rep>=45)h.push('清望之士');
+  if((p.path==='eunuch'||p.path==='maid'||p.path==='consort')&&p.rank>=3)h.push('內廷近臣');
+  if(p.path==='wander'&&p.rank>=3)h.push('江湖名宿');
+  return h;
+ };
+ /* ---- 面板 ---- */
+ C.panel=function(){
+  var p=S.p,c=car(),pa=PATHS[p.path],ps=C.post(),L=[];
+  L.push('【仕途】'+p.title+'（第'+(p.rank+1)+'階／共5階）　所屬：'+FACTIONS[p.fac].n);
+  L.push('職司：'+ps.duty+'　俸祿 +'+ps.sal+'金/月'+(ps.troop?'　部曲 +'+ps.troop+'/月':'')+'\n任職 '+Math.max(0,S.day-c.lp)+' 日　考績 '+c.pf+'（'+(c.pf>=60?'優':c.pf>=30?'平':'劣')+'）　怠職警告 '+c.wn+'/3');
+  var hs=C.honors();if(hs.length)L.push('榮銜：'+hs.join('、'));
+  if(p.rank>=4){L.push('\n你已登此路之巔：'+pa.ranks[4]+'。往後的路，在於守住它——或把它變成更大的籌碼。');return L.join('\n');}
+  var rq=C.reqs('std');var nx=pa.ranks[rq.r];
+  L.push('\n━ 下一階：'+nx+'（'+C.post(rq.r).duty+'）━');
+  var miss=[];
+  for(var i=0;i<rq.items.length;i++){var x=rq.items[i];
+   var cmp=x.max?(x.lt?x.have+'／<'+x.need:x.have+'／≤'+x.need):(x.have+'/'+x.need);
+   L.push((x.ok?'✔ ':'✘ ')+x.t+'　'+cmp+(x.k==='merit'?'　'+bar(x.have,x.need):''));
+   if(!x.ok)miss.push(x);}
+  if(miss.length){L.push('\n▶ 還差：');for(i=0;i<miss.length&&i<4;i++){var m=miss[i];var gap=m.max?'':('還差 '+Math.max(0,m.need-m.have)+'：');L.push('　· '+m.t+'——'+gap+m.tip);}}
+  else L.push('\n✔ 條件已齊備，可以申請晉升！');
+  var v=C.rival();
+  if(v)L.push('\n同階競爭：'+v.n+'（'+rivalWord(v,rq)+'）　你的勝算約 '+C.win(rq)+'%'+(c.pity?'（歷練加成+'+c.pity+'）':''));
+  var ex=[];
+  var lt=C.letters();if(lt.length)ex.push('舉薦信 '+lt.length+' 封（功勳只需'+Math.round(letterFactor(lt[0])*100)+'%，免資歷與上司賞識）');
+  if(c.big>0)ex.push('大功 '+c.big+' 次（需 '+rq.r+' 次可「大功特擢」，功勳只需80%，免資歷與聲望）');
+  ex.push('捐納賄賂 '+C.bribeCost()+' 金（功勳60%，有風險）');
+  L.push('\n其他途徑：'+ex.join('；')+'。');
+  return L.join('\n');
+ };
+ /* ---- 選單 ---- */
+ NODES.careerMenu=function(){
+  var p=S.p,c=car(),b=bossOf(),pa=PATHS[p.path];
+  var cs=[];
+  var rq=p.rank<4?C.reqs('std'):null;
+  if(rq){
+   var okStd=rq.ok;
+   cs.push(ch((okStd?'📈 申請晉升·循例（勝算 '+C.win(rq)+'%）':'📈 申請晉升·循例（尚缺 '+rq.items.filter(function(x){return !x.ok;}).length+' 項）'),'promote',{route:'std'},null,{g:'晉升'}));
+   var lt=C.letters();
+   if(lt.length)cs.push(ch('📜 持舉薦信破格申請（'+lt.length+'封）','promote',{route:'letter'},null,{g:'晉升'}));
+   if(c.big>0)cs.push(ch('🏅 大功特擢（大功 '+c.big+'/'+rq.r+'）','promote',{route:'war'},null,{g:'晉升'}));
+   cs.push(ch('💰 捐納賄賂（'+C.bribeCost()+'金）','bribePromo',null,null,{g:'晉升'}));
+   cs.push(ch('📮 請託舉薦','careerLetterPick',null,null,{g:'晉升'}));
+   cs.push(ch(p.path==='eunuch'||p.path==='maid'||p.path==='consort'?'🗡 進讒構陷同階對手':'🗡 構陷／壓制競爭者','careerIntrigue',null,null,{g:'晉升'}));
+  }
+  cs.push(ch('📋 履行職司（'+C.post().rank+'）','careerPost',null,null,{g:'職務'}));
+  cs.push(ch('🧠 為主出謀劃策（貢獻勢力）','serve',{k:'plan'},null,{g:'職務'}));
+  if(p.path==='soldier'||p.path==='guard'||p.st.tong>=40)cs.push(ch('🚩 領兵出征（需統率）','serve',{k:'war'},null,{g:'職務'}));
+  cs.push(ch('🏛 處理政務','serve',{k:'gov'},null,{g:'職務'}));
+  cs.push(ch('🗂 履歷與榮銜','careerHist',null,null,{g:'其他'}));
+  if(p.fac!=='none')cs.push(ch('🚪 轉投他勢','defectMenu',null,null,{g:'其他'}));
+  if(p.path!=='wander'&&!isEunuch())cs.push(ch('🍃 脫離勢力，成為遊俠','toWander',null,null,{g:'其他'}));
+  if(p.gender==='m'&&!isEunuch()&&(p.region==='luoyang'||p.region==='changan'||p.region==='yingchuan')&&p.fac!=='dong')cs.push(ch('✂ 自宮入宮為宦官（不可逆）','castrateAsk',null,null,{g:'其他'}));
+  if(p.st.rep>=15||p.rank>=2)cs.push(ch('🏴 招兵買馬（200金，+10私兵）','recruitTroop',null,null,{g:'其他'}));
+  if(p.path==='consort')cs.push(ch('💐 爭取聖寵','consortAct',null,null,{g:'其他'}));
+  cs.push(ch('↩ 返回','hub'));
+  var t=C.panel()+'\n\n私兵：'+p.st.troop+'　追隨者：'+followers();
+  return scene(t,b||'',{kind:'menu',bg:'study',ch:cs});
+ };
+ /* ---- 升遷 ---- */
+ function ceremony(route,from){
+  var p=S.p,c=car(),pa=PATHS[p.path],ps=C.post(),b=bossOf(),r=p.rank;
+  var o=[];
+  o.push(pick(CER[grp()]));
+  if(route==='letter'&&from)o.push('你呈上'+(from.id?nm(from.id):'舊日')+'的舉薦信，眾人聽罷，神色各異，最終無人反對。');
+  else if(route==='war')o.push('你累積的赫赫大功擺在眼前，無人再說「資歷尚淺」。');
+  else if(route==='bribe')o.push('任命三日後便下來了。有人說「做事嘛，得懂規矩」，也有人在背後側目。');
+  else if(b)o.push(nm(b)+'當眾宣讀：「'+p.name+'勤勉可嘉，擢為'+pa.ranks[r]+'。」');
+  else o.push('你憑自己的本事，掙得了這個位子。');
+  o.push('\n新任：'+p.title+'\n職司：'+ps.duty+'\n每月加給：俸祿+'+ps.sal+'金'+(ps.troop?'，部曲+'+ps.troop:'')+(r>=3?'，另有食邑田莊之入':''));
+  return o.join('\n');
+ }
+ function doPromote(route,lt){
+  var p=S.p,c=car(),b=bossOf();
+  c.via=ROUTE_N[route];
+  p.rank=Math.min(4,p.rank+1);p.title=titleOf();sync();
+  if(route==='letter'){c.nL++;}
+  if(route==='bribe'){c.nB++;}
+  var ps=C.post();
+  var fx={days:5,st:{rep:route==='bribe'?-2:3,gold:route==='bribe'?0:30*p.rank+(p.rank>=3?60:0)}};
+  if(ps.troop>=2)fx.st.troop=ps.troop*2;
+  if(b&&route!=='bribe'){fx.rel={};fx.rel[b]={tr:3,re:3};}
+  if(lt&&lt.id&&alive(lt.id)){fx.rel=fx.rel||{};fx.rel[lt.id]={tr:4,ly:3};}
+  var v=c.riv;if(v&&v.id&&alive(v.id)){fx.rel=fx.rel||{};if(!fx.rel[v.id])fx.rel[v.id]={su:3};}
+  var out=applyFx(fx);computeInf();
+  addLog('〔晉升〕'+p.title+'（'+ROUTE_N[route]+'）');
+  var nx='';
+  if(p.rank<4){var rq=C.reqs('std');nx='\n\n下一階「'+PATHS[p.path].ranks[p.rank+1]+'」：功勳需 '+C.meritNeed(p.rank+1)+'（現有 '+p.st.merit+'）。';}
+  else nx='\n\n你已登此路之巔。';
+  var sc=resultScene('授任·'+PATHS[p.path].ranks[p.rank],ceremony(route,lt)+fxLine(out)+nx,b||'',p.spot,[ch('📈 查看新職','careerMenu'),ch('繼續','hub')]);
+  sc.tag='promo';return sc;
+ }
+ NODES.promote=function(a){
+  var p=S.p,c=car(),route=(a&&a.route)||'std';
+  if(p.rank>=4)return resultScene('晉升','你已是此路之極。','',p.spot,[ch('返回','careerMenu')]);
+  var rq=C.reqs(route);
+  if(!rq.ok){
+   var miss=rq.items.filter(function(x){return !x.ok;}).map(function(x){return '· '+x.t+'：'+(x.max?(x.lt?x.have+'（須<'+x.need+'）':x.have+'（須≤'+x.need+'）'):x.have+'/'+x.need)+'　'+x.tip;});
+   return resultScene('晉升·'+ROUTE_N[route],'條件尚未齊備：\n'+miss.join('\n')+'\n\n（先補齊上列各項，再來申請，不必碰運氣。）','',p.spot,[ch('返回仕途','careerMenu')]);
+  }
+  var lt=null;
+  if(route==='letter'){lt=C.letters()[0];}
+  var win=C.win(rq);
+  if(roll(win)){
+   if(route==='letter'&&lt){if(lt.legacy){delete S.flags['rec_'+p.fac];}else{c.lt.splice(c.lt.indexOf(lt),1);}}
+   return doPromote(route,lt);
+  }
+  /* 敗給競爭者 */
+  var v=C.rival();c.pity=Math.min(30,c.pity+10);
+  var fx={days:3,st:{}};if(v&&v.id){fx.rel={};fx.rel[v.id]={su:2};}
+  var b=bossOf();if(b){fx.rel=fx.rel||{};fx.rel[b]={af:-1};}
+  var o=applyFx(fx);
+  return resultScene('晉升','你遞上申請，位子卻被「'+(v?v.n:'旁人')+'」搶先一步。上司只是歎道：「時機未到。」\n（你的歷練加成 +'+c.pity+'，下次勝算更高。可請託舉薦、構陷對手，或繼續累積功勳。）'+fxLine(o),b||'',p.spot,[ch('再次申請','promote',{route:route}),ch('返回仕途','careerMenu')]);
+ };
+ NODES.bribePromo=function(a){
+  var p=S.p,c=car();
+  if(p.rank>=4)return resultScene('賄賂','你已無需再向誰打點。','',p.spot,[ch('返回','careerMenu')]);
+  var rq=C.reqs('bribe');
+  if(!rq.ok){
+   var miss=rq.items.filter(function(x){return !x.ok;}).map(function(x){return '· '+x.t+'：'+x.have+(x.max?'（須≤'+x.need+'）':'/'+x.need);});
+   return resultScene('賄賂','此路門檻尚未達到：\n'+miss.join('\n'),'',p.spot,[ch('返回','careerMenu')]);
+  }
+  var b=bossOf();var gre=b?NPC[b].gre:50,hon=b?NPC[b].hon:50;var cost=C.bribeCost();
+  var pr=clamp(Math.round(42+gre*0.45-hon*0.25+diffMod()),15,88);
+  if(!(a&&a.go)){return resultScene('賄賂','你掂量著袋中的 '+cost+' 金。'+(b?nm(b)+'貪念「'+gre+'」、清正「'+hon+'」，':'')+'打點成功率約 '+pr+'%。失敗則損失一半的錢，並可能被人抓住把柄。\n是否打點？','',p.spot,[ch('送上厚禮（-'+cost+'金）','bribePromo',{go:1}),ch('算了','careerMenu')]);}
+  if(roll(pr)){
+   var sc=doPromote('bribe');return sc;}
+  var fx={days:2,st:{gold:-Math.round(cost/2),rep:-2}};
+  if(b){fx.rel={};fx.rel[b]={su:8,tr:-4};}
+  var exp=roll(25+(hon>60?15:0));if(exp){c.wn=Math.min(3,c.wn+1);fx.st.rep=-5;}
+  var o=applyFx(fx);
+  return resultScene('賄賂','上司板起臉：「你這是什麼意思？」錢收了，事卻沒辦。'+(exp?'更糟的是，此事傳了出去，你被記了一次怠職（'+c.wn+'/3）。':'')+fxLine(o),b||'',p.spot,[ch('返回','careerMenu')]);
+ };
+ /* ---- 請託舉薦 ---- */
+ function letterCands(){
+  var a=[],c=car();
+  for(var i=0;i<NPCS.length;i++){var n=NPCS[i];if(n.child||!alive(n.id)||n.age<16)continue;
+   var r=S.rel[n.id];if(!r||!r.met)continue;
+   var ok=(S.p.fac!=='none'&&facOf(n.id)===S.p.fac&&n.tier>=2)||(S.p.fac==='none'&&n.tier>=3);
+   if(!ok)continue;
+   var has=false;for(var j=0;j<c.lt.length;j++)if(c.lt[j].id===n.id&&c.lt[j].exp>S.day)has=true;
+   if(has)continue;
+   a.push({id:n.id,sc:r.tr+r.ly*0.5+r.af*0.3+n.tier*2});}
+  a.sort(function(x,y){return y.sc-x.sc;});return a.slice(0,6);
+ }
+ function letterP(id,gift){var r=R(id);return clamp(Math.round(14+r.tr*0.55+r.ly*0.25+r.af*0.2+Math.min(S.p.st.rep,60)*0.2+(gift?12:0)+diffMod()),5,92);}
+ NODES.careerLetterPick=function(){
+  var c=car(),cs=[],cd=C.cands=letterCands();
+  var t='【請託舉薦】\n舉薦信可讓你以較低的功勳破格申請晉升，並免去資歷與上司賞識的要求。\n信函有效約 10 個月，舉薦人若亡故，信即作廢。\n目前持有：'+C.letters().length+' 封。\n';
+  if(!cd.length)t+='\n你還沒有足夠熟識、且有分量的人可以請託。多拜訪同勢力的官員，提高彼此的信任吧。';
+  for(var i=0;i<cd.length;i++){var id=cd[i].id;var gift=S.p.st.gold>=60;
+   var cdn=c.cd[id]&&c.cd[id]>S.day;
+   cs.push(ch('請 '+nm(id)+' 舉薦（成功率約 '+letterP(id,gift)+'%'+(gift?'，薄禮-40金':'')+(cdn?'，近期已被婉拒':'')+'）','careerLetter',{id:id,gift:gift?1:0}));}
+  cs.push(ch('↩ 返回','careerMenu'));
+  return scene(t,'',{kind:'menu',bg:'study',ch:cs});
+ };
+ NODES.careerLetter=function(a){
+  var id=a.id,c=car();
+  if(!NPC[id]||!alive(id))return resultScene('請託','此人已不在人世，無從請託。','',S.p.spot,[ch('返回','careerMenu')]);
+  if(c.cd[id]&&c.cd[id]>S.day)return resultScene('請託',nm(id)+'還記得你上回的請託：「再等些時日吧。」','',S.p.spot,[ch('返回','careerMenu')]);
+  var gift=a.gift&&S.p.st.gold>=40;var pr=letterP(id,gift);var fx={days:3,st:{},rel:{}};
+  if(gift)fx.st.gold=-40;
+  var ok=roll(pr),t;
+  if(ok){c.lt.push({id:id,d:S.day,exp:S.day+300,q:NPC[id].tier>=4?2:1});fx.rel[id]={tr:2,af:2};
+   t=nm(id)+'提筆寫下舉薦書，蓋上私印：「我替你作保。莫要辜負了。」\n（獲得舉薦信一封，十個月內有效。）';addLog('〔舉薦〕'+nm(id)+'為你寫下舉薦書');}
+  else{c.cd[id]=S.day+90;fx.rel[id]={af:-1};t=nm(id)+'沉吟良久，搖頭：「你的資歷尚淺，此時舉薦，反倒害了你。」';}
+  var o=applyFx(fx);
+  return resultScene('請託舉薦',t+fxLine(o),id,S.p.spot,[ch('返回仕途','careerMenu')]);
+ };
+ /* ---- 構陷競爭者 ---- */
+ NODES.careerIntrigue=function(){
+  var p=S.p,c=car(),v=C.rival(),b=bossOf();
+  if(!v)return resultScene('構陷','此路已無對手可言。','',p.spot,[ch('返回','careerMenu')]);
+  var pal=(p.path==='eunuch'||p.path==='maid'||p.path==='consort');
+  var pr=clamp(Math.round(36+p.st.stealth*0.3+p.st.zhi*0.2+(pal?8:0)+diffMod()-v.pw*0.12),12,85);
+  var fx={days:4,st:{},rel:{}};var t;
+  if(roll(pr)){
+   v.pw=Math.max(10,v.pw-16);fx.st={merit:2,stealth:1};
+   if(v.id)fx.rel[v.id]={ha:6,su:4};
+   t=(pal?'你在貴人耳邊「不經意」提起':'你不動聲色地讓上司聽到了')+'「'+v.n+'」的幾樁小過。對方的聲勢眼見矮了一截。';
+  }else{
+   v.pw+=4;fx.st={rep:-3};if(b)fx.rel[b]={tr:-4,su:3};if(v.id)fx.rel[v.id]={ha:8};
+   t='你的小動作被人察覺，反被指為挑撥是非。「'+v.n+'」冷冷看了你一眼。';
+  }
+  var o=applyFx(fx);
+  return resultScene(pal?'進讒':'構陷',t+'\n（成功率約 '+pr+'%）'+fxLine(o),b||'',p.spot,[ch('返回仕途','careerMenu')]);
+ };
+ /* ---- 履行職司 ---- */
+ NODES.careerPost=function(){
+  var p=S.p,c=car(),ps=C.post();
+  if(p.fac==='none'&&p.path!=='wander')return resultScene('職司','你無所屬，沒有職司可言。','',p.spot,[ch('返回','careerMenu')]);
+  var m=3+p.rank+Math.floor(pStat(PATHS[p.path].stat)/30);
+  var fx={days:8,st:{merit:m,gold:ps.sal*2+5},rel:{}};
+  if(ps.troop>0&&p.st.troop<10*p.rank+10)fx.st.troop=Math.min(2,ps.troop);
+  if(roll(14))fx.st[PATHS[p.path].stat]=1;
+  var b=bossOf();if(b)fx.rel[b]={tr:1};
+  if(p.path==='consort'&&S.emp&&alive(S.emp))fx.rel[S.emp]={af:1,lo:roll(40)?1:0};
+  if(roll(30))fx.st.rep=1;
+  if(S.fac[p.fac]&&p.fac!=='none'){fx.fac={};fx.fac[p.fac]=0.2;}
+  var o=applyFx(fx);c.pf=Math.min(100,c.pf+10);c.wk=S.day;
+  var streak='';
+  if(c.pf>=80){c.pf=80;streak='\n〔勤勉〕考績 80，保持良好。';}
+  return resultScene('職司·'+ps.rank,'你履行「'+ps.rank+'」之責——'+ps.duty+'。\n'+pick(ACT[grp()])+streak+fxLine(o),b||'',p.spot,[ch('再履行一次','careerPost'),ch('返回仕途','careerMenu')]);
+ };
+ /* ---- 履歷 ---- */
+ NODES.careerHist=function(){
+  var c=car(),p=S.p,L=['【仕途履歷】'];
+  L.push('累計：大功 '+c.big+' 次，舉薦破格 '+c.nL+' 次，捐納 '+c.nB+' 次。');
+  var hs=C.honors();L.push('榮銜：'+(hs.length?hs.join('、'):'（尚無）'));
+  if(!c.hist.length)L.push('\n（尚無晉升紀錄）');
+  for(var i=c.hist.length-1;i>=0;i--){var h=c.hist[i];L.push(dateStr(h.d)+'　'+h.t+'　〔'+h.v+'〕');}
+  L.push('\n榮銜說明：大功三次「破賊功臣」、八次「百戰之士」；經舉薦兩次「孝廉之選」；曾捐納者「納資得官」；高階而清譽甚佳者「清望之士」。');
+  return scene(L.join('\n'),'',{kind:'menu',bg:'study',ch:[ch('↩ 返回','careerMenu')]});
+ };
+ /* ---- 降職 ---- */
+ C.demote=function(why){
+  var p=S.p,c=car();if(p.rank<=0)return false;
+  p.rank--;p.title=titleOf();p.st.merit=Math.round(p.st.merit*0.75);
+  c.lr=p.rank;c.lp=S.day;c.riv=null;c.wn=0;c.pf=45;c.pity=0;c.hist.push({d:S.day,r:p.rank,t:p.title,v:'降職'});if(c.hist.length>12)c.hist.shift();
+  addLog('〔降職〕'+why+'，降為「'+p.title+'」');
+  if(window.Canon)Canon.note(why+'，降為「'+p.title+'」（'+dateStr()+'）');
+  S.pending.push(scene('【降職】\n'+why+'。\n\n你被降為「'+p.title+'」，功勳折損四分之一。\n（想重新爬上去，就從履行職司與補齊條件開始吧。）','',{kind:'result',bg:'study',ch:[ch('📈 查看仕途','careerMenu'),ch('繼續','hub')]}));
+  computeInf();return true;
+ };
+ /* ---- 功勳增益記錄與提示 ---- */
+ function meritText(){var p=S.p;return p.rank<4?p.st.merit+'/'+C.meritNeed(p.rank+1):String(p.st.merit);}
+ C.hudMerit=function(){try{return meritText();}catch(e){return String(S.p.st.merit);}};
+ C.hubTag=function(){
+  try{if(S.p.rank>=4)return '';var rq=C.reqs('std');if(rq.ok)return ' ✔可晉升';return ' ('+meritText()+')';}catch(e){return '';}
+ };
+ C.canonLine=function(){
+  try{
+   var c=car(),p=S.p,ps=C.post();
+   var s='◆職司：'+p.title+'，任'+ps.duty+'（任職'+Math.max(0,S.day-c.lp)+'日，考績'+c.pf+'，功勳'+meritText()+'）';
+   var hs=C.honors();if(hs.length)s+='；榮銜'+hs.join('、');
+   var lt=C.letters().filter(function(l){return !l.legacy;});if(lt.length)s+='；持'+lt.map(function(l){return nm(l.id);}).join('、')+'之舉薦信';
+   if(c.wn)s+='；怠職警告'+c.wn+'/3';
+   if(c.hist.length){var h=c.hist[c.hist.length-1];s+='；最近一次'+(h.v==='降職'?'降職':'晉升')+'於'+dateStr(h.d);}
+   return s+'。官階官職以此為準，不得自行授予、剝奪或改動。';
+  }catch(e){return '';}
+ };
+ function checkReady(){
+  try{
+   var p=S.p;if(p.rank>=4){return;}var c=car();
+   var rq=C.reqs('std');var ready=rq.ok?1:0;
+   if(ready&&!c.rdy){addLog('〔仕途〕晉升條件已齊備：「'+PATHS[p.path].ranks[rq.r]+'」');toast('📈 晉升條件已齊備！到「仕途·晉升」申請',3200);}
+   c.rdy=ready;
+  }catch(e){}
+ }
+ var _ap=applyFx;
+ applyFx=function(fx,src){
+  var before=(S&&S.p)?S.p.st.merit:0;
+  var out=_ap(fx,src);
+  try{
+   if(S&&S.p&&S.p.fac!==undefined){
+    var d=S.p.st.merit-before;
+    if(d>0){var c=car();c.gain+=d;if(d>=10){c.big++;}
+     addLog('〔功勳〕+'+d+'（'+meritText()+'）');
+     if(!S.noToast)toast('功勳 +'+d+'　'+meritText()+(d>=10?'　★大功':''),1800);
+     checkReady();}
+   }
+  }catch(e){}
+  return out;
+ };
+ var _fl=fxLine;
+ fxLine=function(out){
+  var s=_fl(out);
+  try{if(s&&out&&S&&S.p){for(var i=0;i<out.length;i++){if(String(out[i]).indexOf('功勳+')===0){s+='\n〔晉升進度〕功勳 '+meritText()+(S.p.rank<4?' '+bar(S.p.st.merit,C.meritNeed(S.p.rank+1),8):'（頂階）');break;}}}}catch(e){}
+  return s;
+ };
+ var _rn=rankNeed;
+ rankNeed=function(){try{return C.meritNeed(S.p.rank+1);}catch(e){return _rn();}};
+ var _to=titleOf;
+ titleOf=function(){var t=_to();try{if(S&&S.car)sync();}catch(e){}return t;};
+ var _dt=NODES.duty;
+ NODES.duty=function(a){
+  var sc=_dt(a);
+  try{var c=car();
+   var gap=S.day-c.wk;
+   if(gap<=14&&S.p.fac!=='none'){c.sk=Math.min(4,(c.sk||0)+1);}else c.sk=0;
+   c.wk=S.day;c.pf=Math.min(80,c.pf+8);
+   if(c.sk>=2&&S.p.fac!=='none'){var bonus=Math.min(3,c.sk-1);S.p.st.merit+=bonus;sc.t+='\n〔勤勉〕連續當差，額外功勳+'+bonus+'（'+meritText()+'）';addLog('〔功勳〕勤勉加成+'+bonus);}
+   checkReady();
+  }catch(e){}
+  return sc;
+ };
+ /* ---- 每月結算：俸祿加給、考績、競爭、舉薦邀約、降職 ---- */
+ C.monthly=function(){
+  var p=S.p;if(!p)return;var c=car();
+  var ps=C.post();
+  var onduty=(p.fac!=='none'&&S.fac[p.fac]&&S.fac[p.fac].pw>0);
+  if(onduty){
+   p.st.merit+=1+(c.pf>=50?1:0);
+   p.st.gold+=ps.sal;
+   if(ps.troop>0&&p.st.troop<10*p.rank+10)p.st.troop=Math.min(100,p.st.troop+Math.max(1,Math.floor(ps.troop/2)));
+   if(p.rank>=3)p.st.gold+=8*p.rank;
+   if(S.day%90===0)addLog('〔俸祿〕職司「'+ps.duty+'」加給+'+ps.sal+'金'+(ps.troop?'，部曲增長':'')+'；年資功勳累計中');
+  }
+  c.pf=Math.max(0,c.pf-6);
+  if(c.riv&&c.riv.r===p.rank+1)c.riv.pw=Math.min(95,c.riv.pw+0.8);
+  /* 舉薦邀約 */
+  var cl=c.lt.length;c.lt=c.lt.filter(function(l){return l.exp>S.day&&alive(l.id);});
+  if(onduty&&p.rank<4&&C.letters().filter(function(l){return !l.legacy;}).length<2&&roll(9)){
+   var cs=letterCands().filter(function(x){var r=S.rel[x.id];return r&&r.tr+r.ly*0.5>=45;});
+   if(cs.length){var g=cs[0].id;c.lt.push({id:g,d:S.day,exp:S.day+300,q:NPC[g].tier>=4?2:1});addLog('〔舉薦〕'+nm(g)+'主動為你寫下舉薦書');toast('📮 '+nm(g)+'有意舉薦你（獲得舉薦信）',3000);}
+  }
+  /* 年中考績 */
+  if(onduty&&p.rank>=0&&S.day-c.rev>=180){
+   c.rev=S.day;var lim={easy:20,normal:30,hard:38,hell:45}[SET.diff]||30;
+   if(c.pf>=60){c.wn=Math.max(0,c.wn-1);p.st.gold+=40+p.rank*30;p.st.merit+=4;p.st.rep=Math.min(100,p.st.rep+2);addLog('〔考績〕優等：聲望+2，賞金'+(40+p.rank*30)+'，功勳+4');toast('考績優等！賞金與功勳',2600);}
+   else if(c.pf<lim){c.wn++;addLog('〔考績〕劣等：怠職警告 '+c.wn+'/3');toast('⚠ 考績劣等，怠職警告 '+c.wn+'/3',3200);
+    if(c.wn>=3&&p.rank>0)C.demote('因屢次怠職、考績低劣，被上司降職');else if(c.wn>=3){c.wn=2;}}
+   else addLog('〔考績〕平等');
+  }
+  /* 犯案革職 */
+  if(onduty&&p.rank>0&&(p.wanted||0)>=65&&S.day-(c.cc||-999)>60){c.cc=S.day;C.demote('因身負重案、聲名狼藉，被革去官職');}
+  checkReady();
+ };
+ var _mt=monthTick;
+ monthTick=function(){_mt();try{if(S&&S.p)C.monthly();}catch(e){if(window.console)console.error('career monthly',e);}};
+ return C;
 })();
 
 /* ---- 99_boot.js ---- */
