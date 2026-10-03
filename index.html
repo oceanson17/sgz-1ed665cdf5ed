@@ -1704,6 +1704,7 @@ NODES.caughtAct=function(a){
  } else {ok=false;txt='你扔下兵刃，雙手高舉。';}
  var out=applyFx(fx);
  if(ok){return resultScene('脫身',txt+fxLine(out),'','wild');}
+ if(window.Canon)Canon.note('因行刺'+n.n+'被擒入獄（'+dateStr()+'）');
  return scene(txt+(k!=='yield'?'\n可惜寡不敵眾，你被擒了。':'')+'\n\n你被押入大牢。'+fxLine(out),'',{bg:'prison',kind:'result',ch:[ch('入獄……','prison',{id:id,dead:a.dead,n:0,sev:sev})]});
 };
 NODES.prison=function(a){
@@ -2237,7 +2238,7 @@ function checkEnding(){
  return null;
 }
 function epilogue(){
- var l=[];var tops=[];for(var id in S.rel){var r=S.rel[id];tops.push([id,r.tr+r.af+r.lo+r.ly-r.ha]);}tops.sort(function(a,b){return b[1]-a[1];});
+ var l=[];var tops=[];for(var id in S.rel){if(!alive(id))continue;var r=S.rel[id];tops.push([id,r.tr+r.af+r.lo+r.ly-r.ha]);}tops.sort(function(a,b){return b[1]-a[1];});
  l.push('——人生回顧——');
  l.push(S.p.name+'，'+(S.p.gender==='f'?'女':'男')+'，最終身分：'+S.p.title+'。');
  l.push('歷時 '+Math.floor(S.stat.days/30)+' 個月，經歷 '+S.stat.kills+' 場刺殺、'+S.stat.schemes+' 次計謀、'+S.stat.letters+' 封密信。');
@@ -10719,11 +10720,11 @@ NODES.punDo=function(a){
  var rr={};rr[acc]={ha:6,su:6};
  if(lvl<=0){t+=a.ai?'':n.n+'沉著臉：「這一次，我且記下。若再犯，絕不輕饒。」';fx.st.rep=-2;fx.st.gold=-Math.min(S.p.st.gold,80);rr[acc]={su:10};}
  else if(lvl===1){t+=a.ai?'':n.n+'下令：「重責二十！」棍棒落下，你咬牙硬撐。';fx.st.hp=-Math.round(22*DS());fx.st.rep=-3;fx.days=10;}
- else if(lvl===2){t+=a.ai?'':n.n+'揮了揮手：「押入大牢。」';fx.st.rep=-4;}
+ else if(lvl===2){t+=a.ai?'':n.n+'揮了揮手：「押入大牢。」';if(window.Canon)Canon.note('曾被'+n.n+'下獄（'+dateStr()+'）');fx.st.rep=-4;}
  else if(lvl===3){t+=a.ai?'':n.n+'下令將你逐出：「流放千里，永不得返！」';fx.st.hp=-10;fx.st.rep=-6;fx.days=40;
-  S.p.region=pick(['liang','youzhou']);S.p.spot=pick(REGIONS[S.p.region].sub0||REGIONS[S.p.region].sub);S.p.rank=Math.max(0,S.p.rank-1);S.p.title=titleOf();}
+  if(window.Canon)Canon.note('被'+n.n+'流放邊地（'+dateStr()+'）');S.p.region=pick(['liang','youzhou']);S.p.spot=pick(REGIONS[S.p.region].sub0||REGIONS[S.p.region].sub);S.p.rank=Math.max(0,S.p.rank-1);S.p.title=titleOf();}
  else if(lvl===4){t+=a.ai?'':n.n+'聲音冰冷：「依例，處以宮刑。」';t+='\n\n（此後之事不堪細述。）一個月的昏沉與痛楚過去，你被留在宮中，成為一名宦官。';
-  S.flags.eunuch=1;S.flags.punished_eunuch=1;S.p.path='eunuch';S.p.fac='han';S.p.rank=0;S.p.region=S.fac.han.cap||'luoyang';S.p.spot='palace';
+  if(window.Canon)Canon.note('因私情被處宮刑，淪為宦官（'+dateStr()+'）');S.flags.eunuch=1;S.flags.punished_eunuch=1;S.p.path='eunuch';S.p.fac='han';S.p.rank=0;S.p.region=S.fac.han.cap||'luoyang';S.p.spot='palace';
   fx.days=30;fx.st.hp=-Math.round(30+10*DS());fx.st.mei=-2;fx.st.wu=-3;fx.st.stealth=4;fx.st.rep=-5;eunuchLoveShift();
   var b=bossOf();if(b)fx.rel[b]={tr:6};addLog('因私情被處宮刑，入宮為宦。');
   next=[ch('在宮中活下去','hub')];}
@@ -11421,6 +11422,265 @@ ACH.push({id:'leg8',n:'亂世說書人',d:'完成 8 條野史／民間傳說支�
    var cls=cv?cv.className:'';var dip=$('dip');
    if(dip&&cls&&SET.anim!==false){dip.className='';void dip.offsetWidth;dip.className='go';}
   }catch(e){}
+ };
+})();
+
+/* ---- 41_canon.js ---- */
+/* ===== V5：正史備忘錄（Canon Memory）——防止 AI 遺忘劇情、讓死者復活 =====
+   全部由既有狀態推導（S.dead / S.npc / S.flags / S.bt / S.log / S.news / S.love），
+   只新增可選欄位 S.canon（舊存檔缺少時自動建立），不改動存檔格式。 */
+var Canon={};
+(function(){
+ var MEM=/靈位|靈柩|靈堂|牌位|墓|陵|葬|冢|墳|祭|弔|悼|哀|追思|回憶|憶起|想起|想到|記得|昔日|往日|當年|當初|生前|已故|故人|去世|身故|逝|亡|死|殺|斬|誅|屍|遺|鬼|魂|夢|曾|舊事|往事|傳聞|聽說|據說|傳言|之後|以來|遇害|被害|崩|薨|繼任|取代|接替|前任|舊主|已不在|頭顱|首級|刺|絞|賜死|血/;
+ var ACT=/^[^。！？\n]{0,2}(?:道|說|說道|曰|言|問|答|笑|哼|嘆|歎|怒|喝|叱|點頭|搖頭|頷首|皺眉|開口|拱手|抬手|揮手|冷|沉聲|低聲|輕聲|朗聲|緩緩|轉身|走|來|入|進|出|站|坐|看|望|瞥|盯|起身|下令|命|令|率|派|遣|至|到|前來|親自|帶|取|遞|扶|握|拉|抱|吩咐|召|請|邀|允|應|拒|同意|現身|出現|歸來|回來|突然|忽然|正|也在|在場|就在|已在|：|:|微微|一把|大笑|朝|向|對你|看著|望著|盯著)/;
+ var BEF=/(?:只見|見到|遇見|看見|望見|迎來|拜見|面見|求見|拜訪|找到|請來|帶來|召見|引見|撞見|碰見|遇到|對|向|朝)$/;
+ var CHV=/拜訪|求見|面見|拜見|見|找|問|請|投靠|效忠|寫信|送禮|結盟|詢問|同行|談|聊|合作|求助|約|會面|對飲|飲酒|切磋|比武|邀/;
+ function CN(){
+  if(!S.canon)S.canon={sc:[],sum:[],notes:[]};
+  if(!S.canon.sc)S.canon.sc=[];if(!S.canon.sum)S.canon.sum=[];if(!S.canon.notes)S.canon.notes=[];
+  return S.canon;
+ }
+ Canon.CN=CN;
+ /* ---- 已故名單（由 S.dead 與 a/flags 推導；相容舊存檔）---- */
+ Canon.dead=function(){
+  var out=[],seen={},i,d,id;
+  var L=(S&&S.dead)||[];
+  for(i=0;i<L.length;i++){d=L[i];id=d&&d.id;if(!id||!NPC[id]||seen[id])continue;seen[id]=1;out.push({id:id,day:d.day,cause:d.cause||'',by:d.by||''});}
+  if(S&&S.npc){for(id in S.npc){
+   if(seen[id]||!NPC[id])continue;
+   if(S.npc[id].a===0&&S.flags&&S.flags['dead_'+id]){seen[id]=1;out.push({id:id,day:S.day,cause:'',by:''});}
+  }}
+  return out;
+ };
+ Canon.isDead=function(id){
+  if(!S||!id||!NPC[id])return false;
+  var o=S.npc&&S.npc[id];
+  if(o&&o.a===0&&S.flags&&S.flags['dead_'+id])return true;
+  var L=S.dead||[];for(var i=0;i<L.length;i++){if(L[i]&&L[i].id===id)return !(o&&o.a===1);}
+  return false;
+ };
+ function byName(d){
+  if(!d.by)return '';
+  if(d.by==='player')return S.p.name;
+  return NPC[d.by]?NPC[d.by].n:'';
+ }
+ function deadLine(d,full){
+  var n=NPC[d.id];var s=n.n+(full&&n.c?'('+n.c+')':'');
+  var c=(d.cause||'').replace(/^被/,'').replace(/\s+/g,'');
+  var by=byName(d);
+  if(c.length>16)c=c.slice(0,16);
+  var w=dateStr(d.day);
+  s+='｜'+w+(c?c:'')+(by&&c.indexOf(by)<0?'(兇手:'+by+')':'')+'｜id:'+d.id;
+  return s;
+ }
+ /* ---- 滾動前情：新場景入庫，舊場景本地壓縮為短摘要（不呼叫 API）---- */
+ function clean(t){return String(t||'').replace(/〔[^〕]*〕/g,'').replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');}
+ function gist(t){
+  var head='',m=t.match(/^【[^】]{1,12}】/);if(m){head=m[0];t=t.slice(head.length);}
+  t=t.replace(/^\s+/,'');
+  var k=t.search(/[。！？]/);var s=k>=0?t.slice(0,k+1):t;
+  if(s.length>34)s=s.slice(0,34)+'…';
+  return head+s;
+ }
+ Canon.record=function(sc){
+  if(!S||!sc||!sc.t)return;
+  var k=sc.kind;if(k==='loading'||k==='hub'||k==='menu')return;
+  var t=clean(sc.t);if(t.length<6)return;
+  var c=CN();var last=c.sc[c.sc.length-1];
+  if(last&&last.t.slice(0,16)===t.slice(0,16)&&Math.abs(last.d-S.day)<=1){last.t=t.slice(0,260);last.sp=sc.sp||'';return;}
+  c.sc.push({d:S.day,t:t.slice(0,260),sp:sc.sp||''});
+  while(c.sc.length>4){
+   var o=c.sc.shift();
+   var g=gist(o.t);
+   var ls=c.sum[c.sum.length-1];
+   if(!ls||ls.s!==g)c.sum.push({d:o.d,s:g});
+  }
+  if(c.sum.length>30){c.sum.splice(3,10,{d:c.sum[3].d,s:'（其間多事，從略）'});}
+ };
+ Canon.note=function(txt){var c=CN();if(c.notes.indexOf(txt)<0){c.notes.push(txt);if(c.notes.length>10)c.notes.shift();}};
+ /* ---- 備忘錄區塊 ---- */
+ function lvl(){return SET.sumLevel==='low'?0:(SET.sumLevel==='high'?2:1);}
+ Canon.block=function(compact){
+  if(!S)return '';
+  var lv=compact?0:lvl();
+  var cap={dead:[28,45,70][lv],ev:[8,12,18][lv],sum:[6,10,16][lv],scn:[2,3,4][lv]};
+  var L=['【正史備忘錄·以下為已定事實，AI 不得違背】'];
+  var dd=Canon.dead();
+  dd.sort(function(a,b){return (NPC[b.id].tier-NPC[a.id].tier)||(b.day-a.day);});
+  if(dd.length){
+   var shown=dd.slice(0,cap.dead).map(function(d){return deadLine(d,lv>0);});
+   L.push('☠已故（絕不可出場、說話、行動、寄信、被遇見；僅可作回憶／靈位／墳墓／鬼魂／悼念）：\n'+shown.join('\n')+(dd.length>cap.dead?'\n…另有'+(dd.length-cap.dead)+'位次要人物已故（同樣不可出場）':''));
+  }else L.push('☠已故：暫無。');
+  /* 玩家狀態 */
+  var p=S.p,st=p.st,ps=[];
+  ps.push(p.name+'（'+(p.gender==='f'?'女':'男')+p.age+'歲）'+(p.title||''));
+  if(S.flags.eunuch)ps.push(S.flags.punished_eunuch?'已受宮刑，現為宦官（因私情被罰）':'宦官');
+  if(p.wanted>0)ps.push('通緝度'+p.wanted);
+  if(st.hp<35)ps.push('重傷／病弱(健康'+st.hp+')');
+  ps.push('所在'+regionName(p.region));
+  var bs=null;try{bs=bossOf();}catch(e){}
+  if(p.fac&&p.fac!=='none'&&FACTIONS[p.fac])ps.push('效力'+FACTIONS[p.fac].n.replace(/·.*/,'')+(bs&&alive(bs)?'，頂頭上司'+nm(bs):''));
+  else ps.push('無所屬');
+  L.push('◆玩家：'+ps.join('；'));
+  var nt=CN().notes;if(nt.length)L.push('◆玩家受罰／際遇：'+nt.join('；'));
+  /* 天下與官職 */
+  var off=[];
+  if(S.emp&&alive(S.emp))off.push('天子'+nm(S.emp));
+  if(S.reg&&alive(S.reg))off.push('執政'+nm(S.reg));
+  FAC_ORDER.forEach(function(f){var fo=S.fac[f];if(!fo||!fo.on||f==='han'||f==='huangjin')return;if(fo.ruler&&alive(fo.ruler))off.push(FACTIONS[f].n.replace(/·.*/,'')+'之主'+nm(fo.ruler));});
+  if(S.fac.han&&S.fac.han.cap)off.push('朝廷所在'+regionName(S.fac.han.cap));
+  if(off.length)L.push('◆官職與勢力：'+off.slice(0,12).join('、'));
+  /* 情緣與人脈 */
+  var lv2=[];
+  try{
+   var lc=(S.love&&S.love.c)||{};
+   for(var id in lc){if(!NPC[id]||!alive(id))continue;var r=lc[id];if(r.st>=2||r.h>=45||S.flags['lover_'+id])lv2.push(nm(id)+'('+LOVE_ST[r.st||0]+'，心'+r.h+(r.vow?'，有誓':'')+')');}
+   for(var k in S.flags){if(S.flags[k]&&k.indexOf('sworn_')===0&&alive(k.slice(6)))lv2.push(nm(k.slice(6))+'(結義)');}
+  }catch(e){}
+  if(lv2.length)L.push('◆情緣／盟誓：'+lv2.slice(0,8).join('、'));
+  var fug=[];for(var fk in S.flags){if(S.flags[fk]&&fk.indexOf('fugitive_')===0&&NPC[fk.slice(9)])fug.push(nm(fk.slice(9))+'(被你送往幽州避禍)');}
+  if(fug.length)L.push('◆離散／流亡：'+fug.slice(0,6).join('、'));
+  if(S.flags.lover_killed&&NPC[S.flags.lover_killed])L.push('◆所愛之人'+nm(S.flags.lover_killed)+'曾因你受難');
+  /* 大事紀：蝴蝶效應紀錄＋天下傳聞＋關鍵日誌，取最近 N 條，再補早期轉折點 */
+  var ev=[],seen={};
+  function addEv(d,t,sig){t=String(t||'').replace(/\s+/g,'');if(!t||seen[t])return;seen[t]=1;ev.push({d:d,t:t.slice(0,42),s:sig||0});}
+  var bt=(S.bt&&S.bt.log)||[],i;
+  for(i=0;i<bt.length;i++)addEv(bt[i].d,bt[i].t,bt[i].s||1);
+  var nw=S.news||[];for(i=0;i<nw.length;i++)addEv(nw[i].d,nw[i].t,1);
+  var lg=S.log||[];for(i=0;i<lg.length;i++){var lt=lg[i].t||'';if(lt.indexOf('〔傳聞〕')===0)continue;if(/處死|流放|下獄|宮刑|入獄|被捕|越獄|刺殺|成婚|結義|拜|歸順|投奔|謀反|登基|晉升|被貶|通緝/.test(lt))addEv(lg[i].d,lt,1);}
+  ev.sort(function(a,b){return a.d-b.d;});
+  var recent=ev.slice(-cap.ev);
+  var older=ev.slice(0,Math.max(0,ev.length-cap.ev)).filter(function(e){return e.s>=2;}).slice(-Math.ceil(cap.ev/2));
+  var evl=older.concat(recent);
+  if(evl.length)L.push('◆大事紀（'+(older.length?'含早期轉折點':'近期')+'）：\n'+evl.map(function(e){return dateStr(e.d)+' '+e.t;}).join('\n'));
+  /* 前情提要 */
+  var c=CN();
+  if(c.sum.length){L.push('◆前情提要（早期劇情，已壓縮）：\n'+c.sum.slice(-cap.sum).map(function(e){return dateStr(e.d)+' '+e.s;}).join('\n'));}
+  var cur=S.scene&&S.scene.t?clean(S.scene.t).slice(0,40):'';
+  var vs=c.sc.filter(function(e){return !(cur&&e.t.slice(0,40)===cur);}).slice(-cap.scn);
+  if(vs.length)L.push('◆最近數幕（原文節錄，須承接）：\n'+vs.map(function(e){return '・'+e.t.slice(0,compact?110:170);}).join('\n'));
+  return L.join('\n');
+ };
+ Canon.RULES='\n【正史鐵則（優先於一切）】\nA. 「正史備忘錄」中標示☠已故者，絕不可出場、說話、行動、寄信、被玩家遇見，只能以回憶、靈位、墳墓、鬼魂、悼念、他人談及的方式出現；不得讓其復活，也不得以「其實沒死」「同名之人」搪塞。speaker、choices、fx 都不得使用已故者。\nB. 不得與備忘錄及前情矛盾：官職、關係、情緣、所在、受罰（被囚者在牢中、被流放者不在京城、宦官不能有子嗣）、已發生的事皆須延續。\nC. 不確定某人是否在世時，寧可讓路人或未列名人物登場，不要引用可能已故者。\n';
+ Canon.RULES_SHORT='\n鐵則：「正史備忘錄」標☠的已故者絕不可出場、說話、行動或寄信，只能以回憶／靈位／墳墓／鬼魂／悼念出現；speaker、choices、fx 皆不可用已故者；不得與備忘錄及前情矛盾（官職、關係、情緣、受罰、所在）。';
+
+ /* ---- 後檢：AI 輸出是否讓已故者復活或行動 ---- */
+ var NAMEC=null,NAMEKEY='';
+ function nameTable(){
+  var key=(S&&S.dead?S.dead.length:0)+'|'+(S?S.day:0);
+  if(NAMEC&&NAMEKEY===key)return NAMEC;
+  var aliveNames=[],i,n;
+  for(i=0;i<NPCS.length;i++){n=NPCS[i];if(S.npc[n.id]&&S.npc[n.id].a===1){aliveNames.push(n.n);if(n.c&&n.c.length>=2)aliveNames.push(n.c);}}
+  var dd=Canon.dead(),tab=[];
+  for(i=0;i<dd.length;i++){
+   n=NPC[dd[i].id];var nn=[n.n];if(n.c&&n.c.length>=2)nn.push(n.c);
+   for(var j=0;j<nn.length;j++){
+    var w=nn[j];if(w.length<2)continue;
+    var clash=false;for(var q=0;q<aliveNames.length;q++){if(aliveNames[q]!==w&&aliveNames[q].indexOf(w)>=0){clash=true;break;}}
+    if(!clash)tab.push({id:dd[i].id,w:w});
+   }
+  }
+  tab.sort(function(a,b){return b.w.length-a.w.length;});
+  NAMEC=tab;NAMEKEY=key;return tab;
+ };
+ Canon.invalidate=function(){NAMEC=null;};
+ /* 回傳違規的已故者名字，或 '' */
+ Canon.scan=function(text,exempt,isChoice){
+  if(!S||!text)return '';
+  var tab=nameTable();if(!tab.length)return '';
+  exempt=exempt||'';
+  for(var i=0;i<tab.length;i++){
+   var w=tab[i].w;if(exempt.indexOf(w)>=0)continue;
+   var from=0,idx;
+   while((idx=text.indexOf(w,from))>=0){
+    from=idx+w.length;
+    var win=text.slice(Math.max(0,idx-16),idx+w.length+16);
+    if(MEM.test(win))continue;
+    var after=text.slice(idx+w.length,idx+w.length+7);
+    var before=text.slice(Math.max(0,idx-3),idx);
+    if(isChoice){ if(CHV.test(text)||ACT.test(after)||BEF.test(before))return NPC[tab[i].id].n; continue; }
+    if(ACT.test(after)||BEF.test(before))return NPC[tab[i].id].n;
+   }
+  }
+  return '';
+ };
+ /* 檢查一個場景物件（AI 產出）：回傳違規者名字或 '' */
+ Canon.checkScene=function(sc,exempt){
+  if(!sc)return '';
+  if(sc.sp&&Canon.isDead(sc.sp))return NPC[sc.sp].n;
+  var w=Canon.scan(sc.t||'',exempt,false);if(w)return w;
+  var ch=sc.ch||[];
+  for(var i=0;i<ch.length;i++){if(ch[i]&&ch[i].ai){w=Canon.scan(ch[i].t||'',exempt,true);if(w)return w;}}
+  return '';
+ };
+
+ /* ---- 接上 AI 流程 ---- */
+ var _sum=AI.summary;
+ AI.summary=function(){
+  var compact=(SET.sumLevel==='low');
+  var b='';try{b=Canon.block(compact);}catch(e){if(window.console)console.error('canon',e);}
+  return (b?b+'\n':'')+_sum();
+ };
+ var _sys=AI.system;AI.system=function(){return _sys()+Canon.RULES;};
+ var _sh=AI.systemShort;AI.systemShort=function(){return _sh()+Canon.RULES_SHORT;};
+ var _js=AI.judgeSystem;AI.judgeSystem=function(){return _js()+Canon.RULES;};
+ var _cf=AI.cleanFx;
+ AI.cleanFx=function(fx){
+  var o=_cf(fx);if(!o)return o;var id;
+  if(o.rel){for(id in o.rel){if(Canon.isDead(id))delete o.rel[id];}}
+  if(o.mem){for(id in o.mem){if(Canon.isDead(id))delete o.mem[id];}}
+  if(o.sus){o.sus=o.sus.filter(function(s){return !Canon.isDead(s[0])&&!Canon.isDead(s[1]);});}
+  return o;
+ };
+ var _val=AI.validate;
+ AI.validate=function(j,need){
+  var out=_val(j,need);
+  if(out.speaker&&Canon.isDead(out.speaker))out.speaker='';
+  return out;
+ };
+ var _run=AI.run;
+ AI.run=function(a){
+  var ex='';
+  try{
+   if(a){ex=(a.type==='polish'&&a.scene?String(a.scene.t||''):'')+(a.ctx||'')+(a.text||'');
+    if(a.type==='judge'&&a.args)ex+=JSON.stringify(a.args);}
+  }catch(e){}
+  Canon.invalidate();
+  return _run(a).then(function(sc){
+   var bad='';try{bad=Canon.checkScene(sc,ex);}catch(e){}
+   if(bad){Canon.rejected=(Canon.rejected||0)+1;throw {kind:'canon',who:bad};}
+   return sc;
+  });
+ };
+ var _em=AI.errMsg;
+ AI.errMsg=function(e){
+  if(e&&e.kind==='canon')return '⚠ AI 的回覆讓已故的「'+e.who+'」重新出場或行動，違反劇情設定，已捨棄並改用離線劇情。';
+  return _em(e);
+ };
+ var _fail=AI.fail;
+ AI.fail=function(e){
+  if(e&&e.kind==='canon'){
+   var m=AI.errMsg(e);AI.lastErr=m;
+   try{barShow('err',m,false,9000);}catch(x){}
+   if(window.console)console.warn('[AI canon]',m);
+   return;
+  }
+  return _fail(e);
+ };
+
+ /* ---- 離線引擎防線：場景說話者若已故，改為無說話者 ---- */
+ var _present=present;
+ present=function(sc,opt){
+  try{
+   if(S&&sc&&typeof sc==='object'){
+    if(sc.sp&&Canon.isDead(sc.sp)&&!sc.memorial){Canon.guarded=(Canon.guarded||0)+1;(Canon.glog=Canon.glog||[]).push(String(sc.sp)+'|'+String(sc.t||'').slice(0,30));if(Canon.glog.length>60)Canon.glog.shift();sc.sp='';}
+    if(sc.ch){sc.ch=sc.ch.filter(function(c){return !(c&&c.a&&c.a.id&&c.go&&/^(talkMenu|talk|visit|letterKind|assTarget|gift|giftTo|loveMenu|date|confess)/.test(c.go)&&Canon.isDead(c.a.id));});}
+   }
+  }catch(e){}
+  var r=_present(sc,opt);
+  try{if(window.UI)UI.present=present;}catch(e3){}
+  try{if(sc&&sc.t)Canon.record(sc);}catch(e2){}
+  return r;
  };
 })();
 
